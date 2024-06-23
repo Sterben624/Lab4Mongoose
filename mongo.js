@@ -1,5 +1,5 @@
 const express = require("express");
-const { MongoClient, ObjectId } = require("mongodb"); // Додаємо ObjectId для роботи з ідентифікаторами MongoDB
+const mongoose = require("mongoose");
 const path = require("path");
 
 const app = express();
@@ -9,52 +9,41 @@ const url = "mongodb://localhost:27017/";
 const dbName = "carsdb";
 const collectionName = "cars";
 
-let client;
+mongoose.connect(url + dbName);
+const db = mongoose.connection;
 
-app.use(express.static(path.join(__dirname), {
-    setHeaders: (res, path, stat) => {
-        if (path.endsWith(".css")) {
-            res.setHeader("Content-Type", "text/css");
-        }
-    }
-}));
+db.on("error", console.error.bind(console, "Помилка підключення до MongoDB:"));
+db.once("open", () => {
+    console.log("Підключено до MongoDB");
+});
 
-async function startServer() {
-    client = new MongoClient(url);
+const carSchema = new mongoose.Schema({
+    make: String,
+    model: String,
+    year: Number
+});
 
-    try {
-        await client.connect();
-        console.log("Підключено до MongoDB");
+const Car = mongoose.model("Car", carSchema);
 
-        const db = client.db(dbName);
-        const collection = db.collection(collectionName);
-        app.locals.collection = collection;
+app.use(express.static(path.join(__dirname)));
 
-        app.use(express.static(path.join(__dirname)));
+app.get("/", (req, res) => {
+    res.sendFile(path.join(__dirname, "public.html"));
+});
 
-        app.get("/", (req, res) => {
-            res.sendFile(path.join(__dirname, "public.html"));
-        });
+app.get("/cars", getCars);
+app.get("/cars/:id", getCarById);
+app.post("/cars", jsonParser, createCar);
+app.delete("/cars/:id", deleteCar);
+app.put("/cars/:id", jsonParser, updateCar);
 
-        app.get("/cars", getCars);
-        app.get("/cars/:id", getCarById);
-        app.post("/cars", jsonParser, createCar);
-        app.delete("/cars/:id", deleteCar);
-        app.put("/cars/:id", jsonParser, updateCar);
-
-        app.listen(3000, () => {
-            console.log("Сервер слухає порт 3000");
-        });
-    } catch (err) {
-        console.error("Помилка підключення до MongoDB", err);
-        process.exit(1);
-    }
-}
+app.listen(3000, () => {
+    console.log("Сервер слухає порт 3000");
+});
 
 async function getCars(req, res) {
     try {
-        const collection = req.app.locals.collection;
-        const cars = await collection.find({}).toArray();
+        const cars = await Car.find({});
         res.send(cars);
     } catch (err) {
         console.error("Помилка отримання списку автомобілів", err);
@@ -64,9 +53,7 @@ async function getCars(req, res) {
 
 async function getCarById(req, res) {
     try {
-        const id = new ObjectId(req.params.id);
-        const collection = req.app.locals.collection;
-        const car = await collection.findOne({ _id: id });
+        const car = await Car.findById(req.params.id);
         if (!car) {
             return res.status(404).send('Автомобіль не знайдено');
         }
@@ -80,11 +67,8 @@ async function getCarById(req, res) {
 async function createCar(req, res) {
     try {
         const { make, model, year } = req.body;
-        const car = { make, model, year };
-
-        const collection = req.app.locals.collection;
-        await collection.insertOne(car);
-
+        const car = new Car({ make, model, year });
+        await car.save();
         res.send(car);
     } catch (err) {
         console.error("Помилка при додаванні автомобіля", err);
@@ -94,10 +78,7 @@ async function createCar(req, res) {
 
 async function deleteCar(req, res) {
     try {
-        const id = new ObjectId(req.params.id);
-        const collection = req.app.locals.collection;
-        const result = await collection.deleteOne({ _id: id });
-
+        const result = await Car.deleteOne({ _id: req.params.id });
         if (result.deletedCount === 0) {
             return res.status(404).send('Автомобіль не знайдено');
         }
@@ -111,45 +92,13 @@ async function deleteCar(req, res) {
 async function updateCar(req, res) {
     try {
         const { make, model, year } = req.body;
-        const objectId = new ObjectId(req.params.id);
-
-        console.log("Оновлення автомобіля за ID:", req.params.id);
-        console.log("Оновлення з маркою:", make, "моделлю:", model, "і роком:", year);
-
-        const collection = req.app.locals.collection;
-        const result = await collection.findOneAndUpdate(
-            { _id: objectId },
-            { $set: { make, model, year } },
-            { returnOriginal: false }
-        );
-
-        if (!result) {
+        const updatedCar = await Car.findByIdAndUpdate(req.params.id, { make, model, year }, { new: true });
+        if (!updatedCar) {
             return res.status(404).send("Автомобіль не знайдено");
         }
-
-        const updatedCar = {
-            id: req.params.id,
-            make: make,
-            model: model,
-            year: year
-        };
-        console.log("updatedCar: ", updatedCar);
-        res.json(updatedCar);
+        res.send(updatedCar);
     } catch (err) {
         console.error("Помилка при оновленні автомобіля", err);
         res.status(500).send("Помилка при оновленні автомобіля");
     }
 }
-
-process.on("SIGINT", async () => {
-    try {
-        await client.close();
-        console.log("Відключено від MongoDB");
-        process.exit(0);
-    } catch (err) {
-        console.error("Помилка закриття з'єднання з MongoDB", err);
-        process.exit(1);
-    }
-});
-
-startServer();
