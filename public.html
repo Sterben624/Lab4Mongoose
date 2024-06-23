@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>Список автомобілів</title>
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet" />
+    <link href="style.css" rel="stylesheet" />
+</head>
+<body>
+    <h2>Список автомобілів</h2>
+    <form name="carForm">
+        <input type="hidden" name="id" value="0" />
+        <div class="form-group">
+            <label for="make">Марка:</label>
+            <input class="form-control" name="make" />
+        </div>
+        <div class="form-group">
+            <label for="model">Модель:</label>
+            <input class="form-control" name="model" />
+        </div>
+        <div class="form-group">
+            <label for="year">Рік випуску:</label>
+            <input class="form-control" name="year" />
+        </div>
+        <div class="panel-body">
+            <button type="submit" class="btn btn-sm btn-primary">Зберегти</button>
+            <a id="reset" class="btn btn-sm btn-primary">Скинути</a>
+        </div>
+    </form>
+    <table class="table table-condensed table-striped table-bordered">
+        <thead><tr><th>Id</th><th>Марка</th><th>Модель</th><th>Рік випуску</th><th></th></tr></thead>
+        <tbody>
+        </tbody>
+    </table>
+   
+    <script>
+        // Отримання всіх автомобілів
+        async function GetCars() {
+            const response = await fetch("/cars", {
+                method: "GET",
+                headers: { "Accept": "application/json" }
+            });
+            if (response.ok === true) {
+                const cars = await response.json();
+                let rows = document.querySelector("tbody"); 
+                cars.forEach(car => {
+                    rows.append(row(car));
+                });
+            }
+        }
+
+        // Отримання одного автомобіля за ID
+        async function GetCar(id) {
+            const response = await fetch("/cars/" + id, {
+                method: "GET",
+                headers: { "Accept": "application/json" }
+            });
+            if (response.ok === true) {
+                const car = await response.json();
+                const form = document.forms["carForm"];
+                form.elements["id"].value = car._id;
+                form.elements["make"].value = car.make;
+                form.elements["model"].value = car.model;
+                form.elements["year"].value = car.year;
+            }
+        }
+
+        // Створення нового автомобіля
+        async function CreateCar(make, model, year) {
+            const response = await fetch("/cars", {
+                method: "POST",
+                headers: { "Accept": "application/json", "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    make: make,
+                    model: model,
+                    year: parseInt(year, 10)
+                })
+            });
+            if (response.ok === true) {
+                const car = await response.json();
+                reset();
+                document.querySelector("tbody").append(row(car));
+            }
+        }
+
+        // Редагування автомобіля
+        async function EditCar(id, make, model, year) {
+            const response = await fetch(`/cars/${id}`, {
+                method: "PUT",
+                headers: { "Accept": "application/json", "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    make: make,
+                    model: model,
+                    year: parseInt(year, 10)
+                })
+            });
+            if (response.ok === true) {
+                const car = await response.json();
+                console.log("Оновлено автомобіль:", car); // Для налагодження
+                reset();
+                window.location.reload();
+                // Додаткова логіка після успішного оновлення
+            } else {
+                console.error("Не вдалося оновити автомобіль");
+                // Обробка помилки
+            }
+        }
+
+        // Видалення автомобіля
+        async function DeleteCar(id) {
+            try {
+                const response = await fetch("/cars/" + id, {
+                    method: "DELETE",
+                    headers: { "Accept": "application/json" }
+                });
+                if (response.ok === true) {
+                    // Успішне видалення, можна видалити рядок з таблиці
+                    document.querySelector(`tr[data-rowid='${id}']`).remove();
+                } else {
+                    console.error("Не вдалося видалити автомобіль");
+                }
+            } catch (error) {
+                console.error("Не вдалося видалити автомобіль", error);
+            }
+        }
+
+        // Скидання форми
+        function reset() {
+            const form = document.forms["carForm"];
+            form.reset();
+            form.elements["id"].value = 0;
+        }
+
+        // Створення рядка для таблиці
+        function row(car) {
+            const tr = document.createElement("tr");
+            tr.setAttribute("data-rowid", car._id);
+
+            const idTd = document.createElement("td");
+            idTd.append(car._id);
+            tr.append(idTd);
+
+            const makeTd = document.createElement("td");
+            makeTd.append(car.make);
+            tr.append(makeTd);
+
+            const modelTd = document.createElement("td");
+            modelTd.append(car.model);
+            tr.append(modelTd);
+
+            const yearTd = document.createElement("td");
+            yearTd.append(car.year);
+            tr.append(yearTd);
+
+            const linksTd = document.createElement("td");
+
+            const editLink = document.createElement("a");
+            editLink.setAttribute("data-id", car._id);
+            editLink.setAttribute("style", "cursor:pointer;padding:15px;");
+            editLink.append("Редагувати");
+            editLink.addEventListener("click", e => {
+                e.preventDefault();
+                GetCar(car._id);
+            });
+            linksTd.append(editLink);
+
+            const removeLink = document.createElement("a");
+            removeLink.setAttribute("data-id", car._id);
+            removeLink.setAttribute("style", "cursor:pointer;padding:15px;");
+            removeLink.append("Видалити");
+            removeLink.addEventListener("click", e => {
+                e.preventDefault();
+                DeleteCar(car._id);
+            });
+
+            linksTd.append(removeLink);
+            tr.appendChild(linksTd);
+
+            return tr;
+        }
+
+        // Обробник для кнопки скидання
+        document.getElementById("reset").addEventListener("click", function(e) {
+            e.preventDefault();
+            reset();
+        });
+
+        // Обробник для відправки форми
+        document.forms["carForm"].addEventListener("submit", e => {
+            e.preventDefault();
+            const form = document.forms["carForm"];
+            const id = form.elements["id"].value;
+            const make = form.elements["make"].value;
+            const model = form.elements["model"].value;
+            const year = form.elements["year"].value;
+            if (id == 0)
+                CreateCar(make, model, year);
+            else
+                EditCar(id, make, model, year);
+        });
+
+        // Завантаження автомобілів після завантаження сторінки
+        GetCars();
+    </script>
+</body>
+</html>
